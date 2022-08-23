@@ -1,56 +1,70 @@
-interface Reactive<T> {
-  val: () => T;
-  update: (fn: (value: T) => T) => void;
-  addObserver: (fn: (value: T) => void) => void;
+class Reactive<T> {
+  private _val: T;
+  private observers: ((value: T) => void)[] = [];
+
+  constructor(initVal: T) {
+    this._val = initVal;
+  }
+
+  val(): T {
+    return this._val;
+  }
+
+  update(fn: (value: T) => T): void {
+    let newValue = fn(this._val);
+    if (this._val !== newValue) {
+      this._val = newValue;
+      this.observers.forEach((obs) => obs(newValue));
+    }
+  }
+
+  addObserver(fn: (value: T) => void): void {
+    this.observers.push(fn);
+  }
 }
 
-interface Derived<T> {
-  val: () => T;
-  addObserver: (fn: (value: T) => void) => void;
+class Derived<T, U> {
+  private reactive: Reactive<U>;
+
+  constructor(reactive: Reactive<T>, fn: (val: T) => U) {
+    this.reactive = new Reactive(fn(reactive.val()));
+    reactive.addObserver((val) => this.reactive.update((_) => fn(val)));
+  }
+
+  val(): U {
+    return this.reactive.val();
+  }
+
+  addObserver(fn: (value: U) => void): void {
+    this.reactive.addObserver(fn);
+  }
 }
 
-const R = <T>(initVal: T): Reactive<T> => {
-  let currentValue = initVal;
-  let observers = [];
+const example1 = () => {
+  let nums = new Reactive([1, 2, 3]);
+  let total = new Derived(nums, (nums) => nums.reduce((acc, n) => acc + n, 0));
 
-  return {
-    val: () => currentValue,
+  console.log(total.val());
 
-    update: (fn: (value: T) => T) => {
-      let newValue = fn(currentValue);
-      if (currentValue !== newValue) {
-        currentValue = newValue;
-        observers.forEach((obs) => obs(newValue));
-      }
-    },
+  nums.addObserver((val) => console.log(val));
 
-    addObserver: function (fn: (value: T) => void) {
-      observers.push(fn);
-    },
-  };
+  nums.update((val) => [...val, 10, 11, 12]);
+  nums.update((val) => [...val, 20, 30, 40]);
+
+  console.log(total.val());
 };
 
-const D = <T, U>(reactive: Reactive<T>, fn: (val: T) => U): Derived<U> => {
-  var newReactive = R(fn(reactive.val()));
+const example2 = () => {
+  let a = new Reactive([]);
+  let b = new Reactive(0);
+  let c = new Reactive(0);
 
-  reactive.addObserver((val) => {
-    newReactive.update((_) => fn(val));
-  });
+  a.addObserver((nums) => b.update((_) => nums.reduce((acc, n) => acc + n, 0)));
+  b.addObserver((val) => c.update((_) => val * 3));
 
-  return {
-    val: newReactive.val,
-    addObserver: newReactive.addObserver,
-  };
+  a.update((_) => [1, 2, 3]);
+
+  console.log(a.val());
+  console.log(b.val());
+  console.log(c.val());
 };
-
-let nums = R([1, 2, 3]);
-let total = D(nums, (nums) => nums.reduce((acc, n) => acc + n, 0));
-
-console.log(total.val());
-
-nums.addObserver((val) => console.log(val));
-
-nums.update((val) => [...val, 10, 11, 12]);
-nums.update((val) => [...val, 20, 30, 40]);
-
-console.log(total.val());
